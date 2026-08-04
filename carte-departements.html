@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Carte des départements</title>
+<style>
+  :root{
+    --encre:      #131a21;
+    --encre-doux: #5b6b78;
+    --fond:       #eef1f2;
+    --papier:     #ffffff;
+    --terre:      #c6d0d6;
+    --trait:      #eef1f2;
+    --signal:     #0b6e5f;
+    --signal-fonce:#07473d;
+    --ligne:      #d5dce0;
+    --police-ui:  "Segoe UI", system-ui, -apple-system, sans-serif;
+    --police-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  *{ box-sizing: border-box; }
+  html, body{
+    margin:0; padding:0;
+    background: var(--fond);
+    color: var(--encre);
+    font-family: var(--police-ui);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .atlas{
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(300px, 1fr);
+    gap: 24px;
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 24px;
+    align-items: start;
+  }
+  @media (max-width: 860px){
+    .atlas{ grid-template-columns: 1fr; padding: 14px; gap: 16px; }
+  }
+  .carte{
+    background: var(--papier);
+    border: 1px solid var(--ligne);
+    border-radius: 4px;
+    padding: 8px;
+    position: relative;
+  }
+  .carte svg{ display:block; width:100%; height:auto; }
+  .dept{
+    fill: var(--terre);
+    stroke: var(--trait);
+    stroke-width: .6;
+    stroke-linejoin: round;
+    cursor: pointer;
+    transition: fill .12s ease, transform .12s ease;
+    transform-origin: center;
+    transform-box: fill-box;
+    outline: none;
+  }
+  .dept:hover,
+  .dept:focus-visible{
+    fill: var(--signal);
+    stroke: #fff;
+    stroke-width: 1;
+    filter: drop-shadow(0 3px 5px rgba(11,110,95,.45));
+  }
+  .dept:focus-visible{ stroke-dasharray: 3 2; }
+  .dept.actif{
+    fill: var(--signal-fonce);
+    stroke: #fff;
+    stroke-width: 1;
+    filter: drop-shadow(0 3px 5px rgba(7,71,61,.5));
+  }
+  .panneau{
+    background: var(--papier);
+    border: 1px solid var(--ligne);
+    border-radius: 4px;
+    padding: 22px 24px 26px;
+    position: sticky;
+    top: 24px;
+    min-height: 300px;
+  }
+  @media (max-width: 860px){ .panneau{ position: static; min-height: 0; } }
+  .code{
+    font-family: var(--police-mono);
+    font-size: 12px;
+    letter-spacing: .14em;
+    color: var(--signal);
+    border: 1px solid var(--signal);
+    border-radius: 2px;
+    padding: 2px 7px;
+    display: inline-block;
+  }
+  .panneau h2{
+    font-size: 25px;
+    font-weight: 600;
+    letter-spacing: -.015em;
+    margin: 14px 0 0;
+    line-height: 1.2;
+  }
+  .filet{ height:1px; background: var(--ligne); margin: 18px 0; }
+  .panneau p{ margin: 0 0 14px; color: var(--encre-doux); }
+  .liens{ list-style:none; margin:0; padding:0; }
+  .liens li{ border-top: 1px solid var(--ligne); }
+  .liens a{
+    display:flex; justify-content:space-between; align-items:center; gap:12px;
+    padding: 11px 2px;
+    color: var(--encre);
+    text-decoration: none;
+    font-weight: 500;
+  }
+  .liens a:hover, .liens a:focus-visible{ color: var(--signal); }
+  .liens a::after{
+    content: "\2192";
+    font-family: var(--police-mono);
+    color: var(--signal);
+    transition: transform .15s ease;
+  }
+  .liens a:hover::after{ transform: translateX(4px); }
+  .invite{ color: var(--encre-doux); }
+  .invite strong{ color: var(--encre); font-weight:600; display:block; margin-bottom:6px; font-size:17px; }
+  .erreur{ padding:16px; color:#b3261e; }
+  @media (prefers-reduced-motion: reduce){ *{ transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="atlas">
+  <div class="carte" id="carte">
+    <div style="padding:20px;text-align:center;color:var(--encre-doux)">Chargement&#8230;</div>
+  </div>
+  <aside class="panneau" id="panneau" aria-live="polite">
+    <div class="invite">
+      <strong>Survolez un d&#233;partement</strong>
+      Les informations correspondantes s'affichent ici.
+    </div>
+  </aside>
+</div>
+
+<!--
+  Les contours sont charges via une balise <script>, PAS via fetch().
+  Cela evite les blocages CORS/CSP de l'iframe SharePoint.
+  Le fichier departements-data.js doit etre dans le MEME dossier que cette page.
+-->
+<script src="departements-data.js"></script>
+
+<script>
+/* ================================================================
+   CONTENUS - A PERSONNALISER SELON VOS DONNEES METIER
+   Une entree par code departement. Les departements sans entree
+   utilisent CONTENU_PAR_DEFAUT.
+   ================================================================ */
+const CONTENUS = {
+  "75": {
+    titre: "Paris",
+    texte: "Direction regionale Ile-de-France. Equipe de 42 personnes, referent : Camille Roux.",
+    liens: [
+      { libelle: "Fiche de l'agence",       url: "https://exemple.sharepoint.com/agence-75" },
+      { libelle: "Annuaire de l'equipe",    url: "https://exemple.sharepoint.com/annuaire-75" },
+      { libelle: "Rapport d'activite 2025", url: "https://exemple.sharepoint.com/rapport-75" }
+    ]
+  },
+  "69": {
+    titre: "Rhone",
+    texte: "Pole logistique Sud-Est. Ouvert du lundi au vendredi, 8h - 18h.",
+    liens: [
+      { libelle: "Fiche de l'agence", url: "https://exemple.sharepoint.com/agence-69" },
+      { libelle: "Plan d'acces",      url: "https://exemple.sharepoint.com/acces-69" }
+    ]
+  }
+};
+
+const CONTENU_PAR_DEFAUT = {
+  titre: "{nom}",
+  texte: "Aucune implantation referencee dans le departement {code} pour le moment.",
+  liens: [
+    { libelle: "Demander l'ouverture d'une fiche", url: "https://exemple.sharepoint.com/demande" }
+  ]
+};
+
+/* ================================================================
+   MOTEUR DE CARTE - normalement rien a modifier en dessous
+   ================================================================ */
+demarrer();
+
+function demarrer(){
+  if (typeof window.DEPARTEMENTS_GEOJSON === "undefined"){
+    echec("Le fichier departements-data.js est introuvable. " +
+          "Verifiez qu'il se trouve dans le meme dossier que cette page.");
+    return;
+  }
+  try { construire(window.DEPARTEMENTS_GEOJSON); }
+  catch(e){ echec("Erreur lors du trace : " + e.message); }
+}
+
+function construire(geo){
+  const traits = (geo.features || []).map(function(f){
+    const p = f.properties || {};
+    return { code: String(p.code == null ? "" : p.code).trim(), nom: p.nom || p.code, geom: f.geometry };
+  }).filter(function(d){ return d.code; });
+
+  if (!traits.length) throw new Error("aucun departement reconnu");
+
+  var loMin=180, loMax=-180, laMin=90, laMax=-90;
+  traits.forEach(function(d){ parcourir(d.geom, function(c){
+    var lo=c[0], la=c[1];
+    if(lo<loMin)loMin=lo; if(lo>loMax)loMax=lo;
+    if(la<laMin)laMin=la; if(la>laMax)laMax=la;
+  }); });
+
+  var k = Math.cos((laMin + laMax) / 2 * Math.PI / 180);
+  var l = (loMax - loMin) * k, h = laMax - laMin;
+  var marge = 24, cote = 800;
+  var ech = Math.min((cote - marge)/l, (cote - marge)/h);
+  var dx = (cote - l*ech)/2, dy = (cote - h*ech)/2;
+  function proj(c){
+    return [ dx + (c[0] - loMin) * k * ech, dy + (laMax - c[1]) * ech ];
+  }
+
+  var ns = "http://www.w3.org/2000/svg";
+  var svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 " + cote + " " + cote);
+  svg.setAttribute("role", "list");
+  svg.setAttribute("aria-label", "Carte des departements francais");
+
+  traits.sort(function(a,b){ return a.code.localeCompare(b.code); }).forEach(function(d){
+    var path = document.createElementNS(ns, "path");
+    path.setAttribute("d", versPath(d.geom, proj));
+    path.setAttribute("class", "dept");
+    path.setAttribute("tabindex", "0");
+    path.setAttribute("role", "listitem");
+    path.setAttribute("aria-label", d.nom + ", departement " + d.code);
+    path.dataset.code = d.code;
+    path.dataset.nom  = d.nom;
+
+    function montrer(){ path.parentNode.appendChild(path); afficher(d.code, d.nom); }
+    path.addEventListener("mouseenter", montrer);
+    path.addEventListener("focus", montrer);
+    path.addEventListener("click", function(){ epingler(path, d); });
+    path.addEventListener("keydown", function(e){
+      if (e.key === "Enter" || e.key === " "){ e.preventDefault(); epingler(path, d); }
+    });
+    svg.appendChild(path);
+  });
+
+  var carte = document.getElementById("carte");
+  carte.innerHTML = "";
+  carte.appendChild(svg);
+
+  svg.addEventListener("mouseleave", function(){
+    var a = svg.querySelector(".dept.actif");
+    if (a) afficher(a.dataset.code, a.dataset.nom); else inviter();
+  });
+}
+
+function epingler(path, d){
+  var svg = path.ownerSVGElement;
+  var actifs = svg.querySelectorAll(".dept.actif");
+  for (var i=0;i<actifs.length;i++) actifs[i].classList.remove("actif");
+  path.classList.add("actif");
+  afficher(d.code, d.nom);
+}
+
+function parcourir(geom, fn){
+  if (!geom) return;
+  function rec(c){ if (Array.isArray(c[0])) c.forEach(rec); else fn(c); }
+  rec(geom.coordinates);
+}
+
+function versPath(geom, proj){
+  var polys = geom.type === "Polygon" ? [geom.coordinates] : geom.coordinates;
+  var d = "";
+  polys.forEach(function(poly){ poly.forEach(function(anneau){
+    anneau.forEach(function(c, i){
+      var p = proj(c);
+      d += (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1);
+    });
+    d += "Z";
+  }); });
+  return d;
+}
+
+function afficher(code, nom){
+  var src = CONTENUS[code] || CONTENU_PAR_DEFAUT;
+  function remplir(t){ return String(t).replace(/\{nom\}/g, nom).replace(/\{code\}/g, code); }
+
+  var html = '<span class="code">' + esc(code) + '</span>'
+           + '<h2>' + esc(remplir(src.titre)) + '</h2>'
+           + '<div class="filet"></div>'
+           + '<p>' + esc(remplir(src.texte)) + '</p>';
+
+  if (src.liens && src.liens.length){
+    html += '<ul class="liens">' + src.liens.map(function(l){
+      return '<li><a href="' + esc(l.url) + '" target="_blank" rel="noopener">'
+        + esc(remplir(l.libelle)) + '</a></li>';
+    }).join("") + '</ul>';
+  }
+  document.getElementById("panneau").innerHTML = html;
+}
+
+function inviter(){
+  document.getElementById("panneau").innerHTML =
+    '<div class="invite"><strong>Survolez un departement</strong>' +
+    'Les informations correspondantes s\'affichent ici.</div>';
+}
+
+function echec(msg){
+  document.getElementById("carte").innerHTML =
+    '<div class="erreur"><strong>Contours introuvables.</strong><br>' + esc(msg) + '</div>';
+}
+
+function esc(s){
+  return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
+    return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c];
+  });
+}
+</script>
+</body>
+</html>
