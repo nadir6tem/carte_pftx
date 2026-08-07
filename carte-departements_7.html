@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Carte des départements</title>
+<style>
+  :root{
+    --encre:      #131a21;
+    --encre-doux: #5b6b78;
+    --fond:       #eef1f2;
+    --papier:     #ffffff;
+    --terre:      #c6d0d6;
+    --trait:      #eef1f2;
+    --signal:     #0b6e5f;
+    --signal-vif: #0f9c85;
+    --signal-fonce:#07473d;
+    --ligne:      #d5dce0;
+    --police-ui:  "Segoe UI", system-ui, -apple-system, sans-serif;
+    --police-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  *{ box-sizing: border-box; }
+  html, body{
+    margin:0; padding:0;
+    background: var(--fond);
+    color: var(--encre);
+    font-family: var(--police-ui);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .atlas{
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 260px;
+    gap: 20px;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 16px;
+    align-items: start;
+  }
+  @media (max-width: 860px){
+    .atlas{ grid-template-columns: 1fr; padding: 14px; gap: 16px; }
+  }
+  .carte{
+    background: var(--papier);
+    border: 1px solid var(--ligne);
+    border-radius: 4px;
+    padding: 8px;
+    position: relative;
+  }
+  .carte svg{ display:block; width:100%; height:auto; overflow: visible; }
+  .dept{
+    fill: var(--terre);
+    stroke: #ffffff;
+    stroke-width: .8;
+    stroke-linejoin: round;
+    cursor: pointer;
+    transition: fill .12s ease, stroke .12s ease, stroke-width .12s ease,
+                filter .15s ease, transform .15s ease;
+    transform-origin: center;
+    transform-box: fill-box;
+    outline: none;
+  }
+  .dept:hover,
+  .dept:focus-visible,
+  .dept.survol{
+    fill: var(--signal-vif);
+    stroke: #ffffff;
+    stroke-width: 2;
+    transform: scale(1.045);
+    filter: drop-shadow(0 0 3px rgba(7,71,61,.55)) drop-shadow(0 6px 10px rgba(7,71,61,.5));
+  }
+  .dept:focus-visible{ stroke-dasharray: 3 2; }
+  .dept.actif{
+    fill: var(--signal-fonce);
+    stroke: #ffffff;
+    stroke-width: 2;
+    transform: scale(1.045);
+    filter: drop-shadow(0 0 3px rgba(7,71,61,.6)) drop-shadow(0 6px 10px rgba(7,71,61,.55));
+  }
+  .panneau{
+    background: var(--papier);
+    border: 1px solid var(--ligne);
+    border-radius: 4px;
+    padding: 18px 18px 22px;
+    position: sticky;
+    top: 16px;
+    min-height: 260px;
+  }
+  @media (max-width: 860px){ .panneau{ position: static; min-height: 0; } }
+  .code{
+    font-family: var(--police-mono);
+    font-size: 12px;
+    letter-spacing: .14em;
+    color: var(--signal);
+    border: 1px solid var(--signal);
+    border-radius: 2px;
+    padding: 2px 7px;
+    display: inline-block;
+  }
+  .panneau h2{
+    font-size: 21px;
+    font-weight: 600;
+    letter-spacing: -.015em;
+    margin: 12px 0 0;
+    line-height: 1.2;
+    overflow-wrap: break-word;
+  }
+  .filet{ height:1px; background: var(--ligne); margin: 14px 0; }
+  .panneau p{ margin: 0 0 14px; color: var(--encre-doux); }
+  .liens{ list-style:none; margin:0; padding:0; }
+  .liens li{ border-top: 1px solid var(--ligne); }
+  .liens a{
+    display:flex; justify-content:space-between; align-items:center; gap:12px;
+    padding: 11px 2px;
+    color: var(--encre);
+    text-decoration: none;
+    font-weight: 500;
+  }
+  .liens a:hover, .liens a:focus-visible{ color: var(--signal); }
+  .liens a::after{
+    content: "\2192";
+    font-family: var(--police-mono);
+    color: var(--signal);
+    transition: transform .15s ease;
+  }
+  .liens a:hover::after{ transform: translateX(4px); }
+  .banque{ display:flex; flex-direction:column; gap:1px; min-width:0; overflow-wrap:break-word; }
+  .banque-nom{ font-weight:600; font-size:14px; letter-spacing:.01em; }
+  .banque-complet{ font-weight:400; font-size:12.5px; color: var(--encre-doux); line-height:1.35; }
+  .liens a:hover .banque-complet,
+  .liens a:focus-visible .banque-complet{ color: var(--signal); }
+  .decompte{
+    font-size: 12px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--encre-doux);
+    margin: 0 0 4px;
+  }
+  .panneau{ max-height: 78vh; overflow-y: auto; }
+  @media (max-width: 860px){ .panneau{ max-height: none; overflow-y: visible; } }
+  .dept-label{
+    font-family: var(--police-mono);
+    font-size: 8.5px;
+    font-weight: 600;
+    fill: var(--encre);
+    paint-order: stroke fill;
+    stroke: #ffffff;
+    stroke-width: 2.4px;
+    stroke-linejoin: round;
+    text-anchor: middle;
+    dominant-baseline: middle;
+    pointer-events: none;
+    user-select: none;
+  }
+  .dept-label.encart{
+    font-size: 15px;
+    stroke-width: 3.2px;
+  }
+  .encart-fond{
+    fill: #f7f9fa;
+    stroke: var(--ligne);
+    stroke-width: 1;
+  }
+  .encart-titre{
+    font-family: var(--police-ui);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    fill: var(--encre-doux);
+    text-anchor: middle;
+    pointer-events: none;
+    user-select: none;
+  }
+  .dept.plat:hover,
+  .dept.plat:focus-visible,
+  .dept.plat.survol,
+  .dept.plat.actif{ transform: none; }
+  .drom-case{
+    fill: #ffffff;
+    fill-opacity: .82;
+    stroke: none;
+    pointer-events: none;
+  }
+  .drom-num{
+    font-family: var(--police-mono);
+    font-size: 13px;
+    font-weight: 600;
+    fill: var(--encre);
+    text-anchor: middle;
+    dominant-baseline: middle;
+    pointer-events: none;
+    user-select: none;
+  }
+  .encart-titre.sur-zone{
+    fill: var(--encre);
+    font-size: 12px;
+  }
+  .invite{ color: var(--encre-doux); }
+  .invite strong{ color: var(--encre); font-weight:600; display:block; margin-bottom:6px; font-size:17px; }
+  .erreur{ padding:16px; color:#b3261e; }
+  @media (prefers-reduced-motion: reduce){ *{ transition: none !important; transform: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="atlas">
+  <div class="carte" id="carte">
+    <div style="padding:20px;text-align:center;color:var(--encre-doux)">Chargement&#8230;</div>
+  </div>
+  <aside class="panneau" id="panneau" aria-live="polite">
+    <div class="invite">
+      <strong>Survolez un d&#233;partement</strong>
+      Les informations correspondantes s'affichent ici.
+    </div>
+  </aside>
+</div>
+
+<!--
+  Les contours sont charges via une balise <script>, PAS via fetch().
+  Cela evite les blocages CORS/CSP de l'iframe SharePoint.
+  Le fichier departements-data.js doit etre dans le MEME dossier que cette page.
+-->
+<script src="departements-data.js"></script>
+
+<script>
+/* ================================================================
+   DONNEES BANQUES - genere depuis matrice_bnq_dept__mel_.xlsx
+   BANQUES : la liste des etablissements (nom court, nom complet, lien)
+   MATRICE : pour chaque departement, les banques competentes
+   ================================================================ */
+const BANQUES = [
+  { nom: "AXA", complet: "AXA Banque", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/AXA.aspx" },
+  { nom: "BANQUE POSTALE", complet: "Banque Postale", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/BANQUE-POSTALE.aspx" },
+  { nom: "BNP", complet: "BNP", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/BNP.aspx" },
+  { nom: "MILLEIS", complet: "Milleis Banque", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/MILLEIS.aspx" },
+  { nom: "PALATINE", complet: "Banque Palatine", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/PALATINE.aspx" },
+  { nom: "SG", complet: "Société Générale", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/SG.aspx" },
+  { nom: "BANQUE DE SAVOIE", complet: "Banque de Savoie", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/BANQUE-DE-SAVOIE.aspx" },
+  { nom: "BPAURA", complet: "Banque Populaire Auvergne Rhône-Alpes", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/BPAURA.aspx" },
+  { nom: "BPBFC", complet: "Banque Populaire Bourgogne-Franche-Comté", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/BPBFC.aspx" },
+  { nom: "BPMED", complet: "Banque Populaire Méditerranée", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/_layouts/15/guestaccess.aspx?e=sJs2kX&share=IQAITR1E_ll9Tqi6KlHblYn7AWX4cou3WgGMhA4TuZKnpSY" },
+  { nom: "CACE", complet: "Crédit Agricole Centre Est", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/CACE.aspx" },
+  { nom: "CANDF", complet: "Crédit Agricole Nord de France", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/CA-NDF.aspx" },
+  { nom: "CASRA", complet: "Crédit Agricole Sud Rhône-Alpes", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/CASRA.aspx" },
+  { nom: "CEBFC", complet: "Caisse d'Epargne Bourgogne-Franche-Comté", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/CEBFC.aspx" },
+  { nom: "CEGEE", complet: "Caisse d'Epargne Grand Est Europe", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/C.aspx" },
+  { nom: "CELDA", complet: "Caisse d'Epargne Loire Drôme Ardèche", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/CELDA.aspx" },
+  { nom: "CEPAC", complet: "Caisse d'Epargne Provence Alpes Corse", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/CEPAC.aspx" },
+  { nom: "CERA", complet: "Caisse d'Epargne Rhône-Alpes", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/CERA.aspx" },
+  { nom: "SG LAYDERNIER", complet: "SG Laydernier", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/SG-LAYDERNIER(1).aspx" },
+  { nom: "BOURSORAMA", complet: "Boursorama Banque", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/BOURSORAMA.aspx" },
+  { nom: "CAIXA", complet: "Caixa Geral de Depositos", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/CAIXA.aspx" },
+  { nom: "CCF", complet: "(anciennement Crédit Commercial de France)", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/CFF.aspx" },
+  { nom: "CREDIT COOPERATIF E-AGENCE", complet: "Crédit Coopératif E-Agence", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/CREDIT-COOPERATIF(1).aspx" },
+  { nom: "HELLO BANK", complet: "Hello Bank", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/HELLO-BANK.aspx" },
+  { nom: "LCL", complet: "LCL", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/LCL.aspx" },
+  { nom: "BPALC", complet: "Banque Populaire Alsace Lorraine Champagne", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/BPALC.aspx" },
+  { nom: "BP BRED", complet: "BRED Banque populaire", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/BP-BRED.aspx" },
+  { nom: "BP NORD", complet: "Banque Populaire du Nord", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/BPN.aspx" },
+  { nom: "CA ALPES PROVENCE", complet: "Crédit Agricole Alpes Provence", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/CA-ALPES-PROVENCE.aspx" },
+  { nom: "CA BRIE PICARDIE", complet: "Crédit Agricole Brie Picardie", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/CREDIT-AGRICOLE-PICARDIE.aspx" },
+  { nom: "CA CENTRE FRANCE", complet: "Crédit Agricole Centre France", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/CA-CENTRE-FRANCE.aspx" },
+  { nom: "CA CHAMPAGNE BOURGOGNE", complet: "Crédit Agricole de Champagne-Bourgogne", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/CA-CHAMPAGNE-BOURGOGNE.aspx" },
+  { nom: "CA DES SAVOIE", complet: "Crédit Agricole des Savoie", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/CADS.aspx" },
+  { nom: "CA FRANCHE COMTE", complet: "Crédit Agricole de Franche-Comté", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/CA-FRANCHE-COMTE.aspx" },
+  { nom: "CA ILE DE FRANCE", complet: "Crédit Agricole d'Ile de France", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/CA-IDF.aspx" },
+  { nom: "CA LANGUEDOC", complet: "Crédit Agricole Languedoc", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/CAL.aspx" },
+  { nom: "CA LOIRE-HAUTE LOIRE", complet: "Crédit Agricole Loire Haute-Loire", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/CA-LOIRE---HAUTE-LOIRE.aspx" },
+  { nom: "CA MEDITERRANEE", complet: "Crédit Agricole Sud Méditerranée", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/CA-MEDITERRANEE.aspx" },
+  { nom: "CA NORMANDIE", complet: "Crédit Agricole Normandie", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/CA-NORMANDIE.aspx" },
+  { nom: "CA NORMANDIE SEINE", complet: "Crédit Agricole Normandie-Seine", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/CA-NORMANDIE-SEINE.aspx" },
+  { nom: "CA TOURAINE", complet: "Crédit Agricole Touraine Poitou", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/CA-TOURAINE.aspx" },
+  { nom: "CE AUVERGNE LIMOUSIN", complet: "Caisse d'Epargne Auvergne et Limousin", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/CAISSE-D'EPARGNE-AUVERGNE-LIMOUSIN.aspx" },
+  { nom: "CE BRETAGNE", complet: "Caisse d'Epargne Bretagne Pays de Loire", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/CAISSE-D%E2%80%99EPARGNE-BRETAGNE.aspx" },
+  { nom: "CE HAUT DE FRANCE", complet: "Caisse d'Epargne Hauts de France", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/CENDF(1).aspx" },
+  { nom: "CE ILE DE FRANCE", complet: "Caisse d'Epargne Ile-de-France", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/CAISSE-D%E2%80%99EPARGNE-IDF.aspx" },
+  { nom: "CE LANGUEDOC ROUSSILLON", complet: "Caisse d'Epargne Languedoc Roussillon", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/CE-Languedoc-Roussillon.aspx" },
+  { nom: "CE LOIRE-CENTRE", complet: "Caisse d'Epargne Loire-Centre", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/CELC.aspx" },
+  { nom: "CE MIDI-PYRENEES", complet: "Caisse d'Epargne Midi-Pyrénées", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/CAISSE-D'EPARGNE-MIDI-PYRENEES.aspx" },
+  { nom: "CMUT", complet: "Crédit Mutuel", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/CREDIT-MUTUEL-FRANCE.aspx" },
+  { nom: "CM BRETAGNE", complet: "Crédit Mutuel de Bretagne", lien: "https://perfectauxcourtier.sharepoint.com/sites/IntranetPerfectaux/SitePages/CM-ARKEA.aspx" }
+];
+
+/* Pour chaque departement : indices des banques competentes dans BANQUES. */
+const MATRICE = {
+  "01": [0,1,2,3,4,5,6,7,8,10,15,17,18,19,20,21,22,23,24,48],
+  "02": [0,1,2,3,4,5,19,20,21,22,23,24,26,27,29,43,48],
+  "03": [0,1,2,3,4,5,7,15,19,20,21,22,23,24,30,41,48],
+  "04": [0,1,2,3,4,5,7,15,16,19,20,21,22,23,24,28,48],
+  "05": [0,1,2,3,4,5,7,15,16,19,20,21,22,23,24,28,48],
+  "06": [0,1,2,3,4,5,9,19,20,21,22,23,24,48],
+  "07": [0,1,2,3,4,5,10,12,15,19,20,21,22,23,24,48],
+  "08": [0,1,2,3,4,5,14,19,20,21,22,23,24,27,48],
+  "09": [0,1,2,3,4,5,19,20,21,22,23,24,47,48],
+  "10": [0,1,2,3,4,5,14,19,20,21,22,23,24,25,31,48],
+  "11": [0,1,2,3,4,5,19,20,21,22,23,24,35,45,48],
+  "12": [0,1,2,3,4,5,19,20,21,22,23,24,47,48],
+  "13": [0,1,2,3,4,5,9,16,19,20,21,22,23,24,28,37,48],
+  "14": [0,1,2,3,4,5,19,20,21,22,23,24,26,38,48],
+  "15": [0,1,2,3,4,5,7,19,20,21,22,23,24,30,41,48],
+  "16": [0,1,2,3,4,5,19,20,21,22,23,24,48],
+  "17": [0,1,2,3,4,5,19,20,21,22,23,24,48],
+  "18": [0,1,2,3,4,5,19,20,21,22,23,24,30,46,48],
+  "19": [0,1,2,3,4,5,7,19,20,21,22,23,24,41,48],
+  "21": [0,1,2,3,4,5,8,13,19,20,21,22,23,24,31,48],
+  "22": [0,1,2,3,4,5,19,20,21,22,23,24,42,49],
+  "23": [0,1,2,3,4,5,19,20,21,22,23,24,30,41,48],
+  "24": [0,1,2,3,4,5,13,19,20,21,22,23,24,48],
+  "25": [0,1,2,3,4,5,8,19,20,21,22,23,24,33,48],
+  "26": [0,1,2,3,4,5,7,9,12,15,19,20,21,22,23,24,48],
+  "27": [0,1,2,3,4,5,19,20,21,22,23,24,26,39,48],
+  "28": [0,1,2,3,4,5,19,20,21,22,23,24,46,48],
+  "29": [0,1,2,3,4,5,19,20,21,22,23,24,42,49],
+  "2A": [0,1,2,3,4,5,9,16,19,20,21,22,23,24,48],
+  "2B": [0,1,2,3,4,5,9,16,19,20,21,22,23,24,48],
+  "30": [0,1,2,3,4,5,9,19,20,21,22,23,24,35,45,48],
+  "31": [0,1,2,3,4,5,19,20,21,22,23,24,47,48],
+  "32": [0,1,2,3,4,5,19,20,21,22,23,24,47,48],
+  "33": [0,1,2,3,4,5,19,20,21,22,23,24,48],
+  "34": [0,1,2,3,4,5,9,19,20,21,22,23,24,35,45,48],
+  "35": [0,1,2,3,4,5,19,20,21,22,23,24,42,49],
+  "36": [0,1,2,3,4,5,19,20,21,22,23,24,46,48],
+  "37": [0,1,2,3,4,5,19,20,21,22,23,24,40,46,48],
+  "38": [0,1,2,3,4,5,6,7,10,12,15,17,18,19,20,21,22,23,24,48],
+  "39": [0,1,2,3,4,5,8,13,19,20,21,22,23,24,33,48],
+  "40": [0,1,2,3,4,5,19,20,21,22,23,24,48],
+  "41": [0,1,2,3,4,5,19,20,21,22,23,24,46,48],
+  "42": [0,1,2,3,4,5,7,15,19,20,21,22,23,24,36,48],
+  "43": [0,1,2,3,4,5,7,15,19,20,21,22,23,24,36,41,48],
+  "44": [0,1,2,3,4,5,19,20,21,22,23,24,42,48],
+  "45": [0,1,2,3,4,5,19,20,21,22,23,24,46,48],
+  "46": [0,1,2,3,4,5,19,20,21,22,23,24,47,48],
+  "47": [0,1,2,3,4,5,19,20,21,22,23,24,48],
+  "48": [0,1,2,3,4,5,15,19,20,21,22,23,24,35,45,48],
+  "49": [0,1,2,3,4,5,19,20,21,22,23,24,42,48],
+  "50": [0,1,2,3,4,5,19,20,21,22,23,24,38,48],
+  "51": [0,1,2,3,4,5,14,19,20,21,22,23,24,25,48],
+  "52": [0,1,2,3,4,5,14,19,20,21,22,23,24,25,31,48],
+  "53": [0,1,2,3,4,5,19,20,21,22,23,24,42,48],
+  "54": [0,1,2,3,4,5,14,19,20,21,22,23,24,25,48],
+  "55": [0,1,2,3,4,5,14,19,20,21,22,23,24,25,48],
+  "56": [0,1,2,3,4,5,19,20,21,22,23,24,42,49],
+  "57": [0,1,2,3,4,5,14,19,20,21,22,23,24,25,48],
+  "58": [0,1,2,3,4,5,8,13,19,20,21,22,23,24,30,48],
+  "59": [0,1,2,3,4,5,11,19,20,21,22,23,24,27,43,48],
+  "60": [0,1,2,3,4,5,19,20,21,22,23,24,29,43,48],
+  "61": [0,1,2,3,4,5,19,20,21,22,23,24,38,48],
+  "62": [0,1,2,3,4,5,11,19,20,21,22,23,24,27,43,48],
+  "63": [0,1,2,3,4,5,7,19,20,21,22,23,24,30,41,48],
+  "64": [0,1,2,3,4,5,19,20,21,22,23,24,48],
+  "65": [0,1,2,3,4,5,19,20,21,22,23,24,47,48],
+  "66": [0,1,2,3,4,5,19,20,21,22,23,24,45,48],
+  "67": [0,1,2,3,4,5,14,19,20,21,22,23,24,25,48],
+  "68": [0,1,2,3,4,5,14,19,20,21,22,23,24,25,48],
+  "69": [0,1,2,3,4,5,6,7,10,15,17,19,20,21,22,23,24,48],
+  "70": [0,1,2,3,4,5,8,13,19,20,21,22,23,24,33,48],
+  "71": [0,1,2,3,4,5,8,10,13,15,19,20,21,22,23,24,48],
+  "72": [0,1,2,3,4,5,19,20,21,22,23,24,42,48],
+  "73": [0,1,2,3,4,5,6,7,17,18,19,20,21,22,23,24,32,48],
+  "74": [0,1,2,3,4,5,6,7,17,18,19,20,21,22,23,24,32,48],
+  "75": [0,1,2,3,4,5,19,20,21,22,23,24,26,34,44,48],
+  "76": [0,1,2,3,4,5,19,20,21,22,23,24,26,39,48],
+  "77": [0,1,2,3,4,5,19,20,21,22,23,24,26,29,34,44,48],
+  "78": [0,1,2,3,4,5,19,20,21,22,23,24,26,34,44,48],
+  "79": [0,1,2,3,4,5,19,20,21,22,23,24,48],
+  "80": [0,1,2,3,4,5,19,20,21,22,23,24,27,29,43,48],
+  "81": [0,1,2,3,4,5,19,20,21,22,23,24,47,48],
+  "82": [0,1,2,3,4,5,19,20,21,22,23,24,47,48],
+  "83": [0,1,2,3,4,5,19,20,21,22,23,24,37,48],
+  "84": [0,1,2,3,4,5,9,15,16,19,20,21,22,23,24,28,48],
+  "85": [0,1,2,3,4,5,19,20,21,22,23,24,42,48],
+  "86": [0,1,2,3,4,5,19,20,21,22,23,24,40,48],
+  "87": [0,1,2,3,4,5,19,20,21,22,23,24,41,48],
+  "88": [0,1,2,3,4,5,14,19,20,21,22,23,24,25,48],
+  "89": [0,1,2,3,4,5,8,13,19,20,21,22,23,24,31,48],
+  "90": [0,1,2,3,4,5,8,13,19,20,21,22,23,24,33,48],
+  "91": [0,1,2,3,4,5,19,20,21,22,23,24,26,34,44,48],
+  "92": [0,1,2,3,4,5,19,20,21,22,23,24,26,34,44,48],
+  "93": [0,1,2,3,4,5,19,20,21,22,23,24,26,44,48],
+  "94": [0,1,2,3,4,5,19,20,21,22,23,24,26,44,48],
+  "95": [0,1,2,3,4,5,19,20,21,22,23,24,34,44,48],
+  "DROM": [16,26]
+};
+
+/* Mise en page du dessin (repere interne, origine en haut a gauche).
+   C'est ici qu'on regle la position de la France et des deux encarts. */
+const MISE_EN_PAGE = {
+  largeur: 1000,
+  hauteur: 800,
+  /* Zone occupee par la carte de France : decalee vers la droite pour
+     laisser une colonne libre aux encarts. */
+  carte:   { x: 244, y: 12, largeur: 744, hauteur: 776 },
+  /* Encarts, colonne de gauche */
+  outreMer:      { x: 10, y: 10,  taille: 190 },
+  petiteCouronne:{ x: 10, y: 600, taille: 190 }
+};
+
+/* Departements trop petits pour etre cliquables a l'echelle nationale :
+   ils sont repris dans un encart agrandi. Ajoutez/retirez des codes ici. */
+const CODES_ENCART = ["75", "92", "93", "94"];
+
+/* Entite virtuelle "DROM" : regroupe les territoires ultramarins en une
+   seule zone cliquable. Le code utilise dans MATRICE est "DROM". */
+const DROM = {
+  code: "DROM",
+  nom: "Outre-mer",
+  titre: "Outre-mer",
+  numeros: ["971", "972", "973", "974", "975", "976", "977", "978"]
+};
+
+/* ================================================================
+   MOTEUR DE CARTE - normalement rien a modifier en dessous
+   ================================================================ */
+demarrer();
+
+function demarrer(){
+  if (typeof window.DEPARTEMENTS_GEOJSON === "undefined"){
+    echec("Le fichier departements-data.js est introuvable. " +
+          "Verifiez qu'il se trouve dans le meme dossier que cette page.");
+    return;
+  }
+  try { construire(window.DEPARTEMENTS_GEOJSON); }
+  catch(e){ echec("Erreur lors du trace : " + e.message); }
+}
+
+function construire(geo){
+  const traits = (geo.features || []).map(function(f){
+    const p = f.properties || {};
+    return { code: String(p.code == null ? "" : p.code).trim(), nom: p.nom || p.code, geom: f.geometry };
+  }).filter(function(d){ return d.code; });
+
+  if (!traits.length) throw new Error("aucun departement reconnu");
+
+  var L = MISE_EN_PAGE;
+  var proj = faireProjection(traits, L.carte);
+
+  var ns = "http://www.w3.org/2000/svg";
+  var svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 " + L.largeur + " " + L.hauteur);
+  svg.setAttribute("role", "list");
+  svg.setAttribute("aria-label", "Carte des departements francais");
+
+  var gPrincipal = document.createElementNS(ns, "g");
+  svg.appendChild(gPrincipal);
+
+  traits.sort(function(a,b){ return a.code.localeCompare(b.code); });
+
+  /* --- Carte principale --------------------------------------- */
+  traits.forEach(function(d){
+    creerDept(d, proj, gPrincipal, {
+      etiquette: CODES_ENCART.indexOf(d.code) === -1,
+      classeEtiquette: "dept-label"
+    });
+  });
+
+  /* --- Encart : petite couronne -------------------------------- */
+  var petits = traits.filter(function(d){ return CODES_ENCART.indexOf(d.code) !== -1; });
+  if (petits.length){
+    var gEncart = document.createElementNS(ns, "g");
+    svg.appendChild(gEncart);
+
+    var boite = {
+      x: L.petiteCouronne.x, y: L.petiteCouronne.y, taille: L.petiteCouronne.taille,
+      marge: 12, hautTitre: 20
+    };
+
+    var fond = document.createElementNS(ns, "rect");
+    fond.setAttribute("class", "encart-fond");
+    fond.setAttribute("x", boite.x);
+    fond.setAttribute("y", boite.y);
+    fond.setAttribute("width", boite.taille);
+    fond.setAttribute("height", boite.taille);
+    fond.setAttribute("rx", "3");
+    gEncart.appendChild(fond);
+
+    var titre = document.createElementNS(ns, "text");
+    titre.setAttribute("class", "encart-titre");
+    titre.setAttribute("x", boite.x + boite.taille / 2);
+    titre.setAttribute("y", boite.y + 13);
+    titre.textContent = "Petite couronne";
+    gEncart.appendChild(titre);
+
+    var projEncart = faireProjection(petits, {
+      x: boite.x + boite.marge,
+      y: boite.y + boite.hautTitre,
+      largeur: boite.taille - 2 * boite.marge,
+      hauteur: boite.taille - boite.hautTitre - boite.marge
+    });
+
+    petits.forEach(function(d){
+      creerDept(d, projEncart, gEncart, {
+        etiquette: true,
+        classeEtiquette: "dept-label encart"
+      });
+    });
+  }
+
+  /* --- Encart : Outre-mer (entite unique) ---------------------- */
+  if (DROM && DROM.numeros && DROM.numeros.length){
+    var gDrom = document.createElementNS(ns, "g");
+    svg.appendChild(gDrom);
+
+    var bd = {
+      x: L.outreMer.x, y: L.outreMer.y, taille: L.outreMer.taille,
+      hautTitre: 26, marge: 10, ecart: 6, colonnes: 3
+    };
+
+    var zone = document.createElementNS(ns, "rect");
+    zone.setAttribute("class", "dept plat");
+    zone.setAttribute("x", bd.x);
+    zone.setAttribute("y", bd.y);
+    zone.setAttribute("width", bd.taille);
+    zone.setAttribute("height", bd.taille);
+    zone.setAttribute("rx", "3");
+    zone.setAttribute("tabindex", "0");
+    zone.setAttribute("role", "listitem");
+    zone.setAttribute("aria-label", DROM.nom + ", " + DROM.numeros.join(", "));
+    zone.dataset.code = DROM.code;
+    zone.dataset.nom  = DROM.nom;
+    gDrom.appendChild(zone);
+
+    var titreDrom = document.createElementNS(ns, "text");
+    titreDrom.setAttribute("class", "encart-titre sur-zone");
+    titreDrom.setAttribute("x", bd.x + bd.taille / 2);
+    titreDrom.setAttribute("y", bd.y + 17);
+    titreDrom.textContent = DROM.titre;
+    gDrom.appendChild(titreDrom);
+
+    var dispoL = bd.taille - 2 * bd.marge;
+    var dispoH = bd.taille - bd.hautTitre - bd.marge;
+    var lignes = Math.ceil(DROM.numeros.length / bd.colonnes);
+    var caseL = (dispoL - (bd.colonnes - 1) * bd.ecart) / bd.colonnes;
+    var caseH = (dispoH - (lignes - 1) * bd.ecart) / lignes;
+
+    DROM.numeros.forEach(function(num, i){
+      var col = i % bd.colonnes, ligne = Math.floor(i / bd.colonnes);
+      var cx = bd.x + bd.marge + col * (caseL + bd.ecart);
+      var cy = bd.y + bd.hautTitre + ligne * (caseH + bd.ecart);
+
+      var pastille = document.createElementNS(ns, "rect");
+      pastille.setAttribute("class", "drom-case");
+      pastille.setAttribute("x", cx.toFixed(1));
+      pastille.setAttribute("y", cy.toFixed(1));
+      pastille.setAttribute("width", caseL.toFixed(1));
+      pastille.setAttribute("height", caseH.toFixed(1));
+      pastille.setAttribute("rx", "2");
+      gDrom.appendChild(pastille);
+
+      var num2 = document.createElementNS(ns, "text");
+      num2.setAttribute("class", "drom-num");
+      num2.setAttribute("x", (cx + caseL / 2).toFixed(1));
+      num2.setAttribute("y", (cy + caseH / 2).toFixed(1));
+      num2.textContent = num;
+      gDrom.appendChild(num2);
+    });
+
+    zone.addEventListener("mouseenter", function(){
+      surligner(svg, DROM.code, true); afficher(DROM.code, DROM.nom);
+    });
+    zone.addEventListener("focus", function(){
+      surligner(svg, DROM.code, true); afficher(DROM.code, DROM.nom);
+    });
+    zone.addEventListener("mouseleave", function(){ surligner(svg, DROM.code, false); });
+    zone.addEventListener("blur", function(){ surligner(svg, DROM.code, false); });
+    zone.addEventListener("click", function(){ epingler(svg, DROM); });
+    zone.addEventListener("keydown", function(e){
+      if (e.key === "Enter" || e.key === " "){ e.preventDefault(); epingler(svg, DROM); }
+    });
+  }
+
+  function creerDept(d, projection, conteneur, opts){
+    var path = document.createElementNS(ns, "path");
+    path.setAttribute("d", versPath(d.geom, projection));
+    path.setAttribute("class", "dept");
+    path.setAttribute("tabindex", "0");
+    path.setAttribute("role", "listitem");
+    path.setAttribute("aria-label", d.nom + ", departement " + d.code);
+    path.dataset.code = d.code;
+    path.dataset.nom  = d.nom;
+
+    var groupe = document.createElementNS(ns, "g");
+    groupe.appendChild(path);
+
+    if (opts.etiquette){
+      var centre = centroide(d.geom, projection) || centreBoite(d.geom, projection);
+      var etiquette = document.createElementNS(ns, "text");
+      etiquette.setAttribute("class", opts.classeEtiquette);
+      etiquette.setAttribute("x", centre[0].toFixed(1));
+      etiquette.setAttribute("y", centre[1].toFixed(1));
+      etiquette.textContent = d.code;
+      groupe.appendChild(etiquette);
+    }
+
+    function entrer(){
+      if (groupe.nextSibling) conteneur.appendChild(groupe);
+      surligner(svg, d.code, true);
+      afficher(d.code, d.nom);
+    }
+    function sortir(){ surligner(svg, d.code, false); }
+
+    path.addEventListener("mouseenter", entrer);
+    path.addEventListener("mouseleave", sortir);
+    path.addEventListener("focus", entrer);
+    path.addEventListener("blur", sortir);
+    path.addEventListener("click", function(){ epingler(svg, d); });
+    path.addEventListener("keydown", function(e){
+      if (e.key === "Enter" || e.key === " "){ e.preventDefault(); epingler(svg, d); }
+    });
+
+    conteneur.appendChild(groupe);
+  }
+
+  var carte = document.getElementById("carte");
+  carte.innerHTML = "";
+  carte.appendChild(svg);
+
+  svg.addEventListener("mouseleave", function(){
+    var a = svg.querySelector(".dept.actif");
+    if (a) afficher(a.dataset.code, a.dataset.nom); else inviter();
+  });
+}
+
+/* Projette un sous-ensemble de departements dans une boite donnee */
+function faireProjection(sousEnsemble, boite){
+  var loMin=180, loMax=-180, laMin=90, laMax=-90;
+  sousEnsemble.forEach(function(d){ parcourir(d.geom, function(c){
+    var lo=c[0], la=c[1];
+    if(lo<loMin)loMin=lo; if(lo>loMax)loMax=lo;
+    if(la<laMin)laMin=la; if(la>laMax)laMax=la;
+  }); });
+
+  var k = Math.cos((laMin + laMax) / 2 * Math.PI / 180);
+  var l = (loMax - loMin) * k, h = laMax - laMin;
+  var ech = Math.min(boite.largeur / l, boite.hauteur / h);
+  var dx = boite.x + (boite.largeur - l * ech) / 2;
+  var dy = boite.y + (boite.hauteur - h * ech) / 2;
+
+  return function(c){
+    return [ dx + (c[0] - loMin) * k * ech, dy + (laMax - c[1]) * ech ];
+  };
+}
+
+/* Applique/retire le survol sur toutes les occurrences d'un departement
+   (carte principale + encart), pour que les deux reagissent ensemble */
+function surligner(svg, code, actif){
+  var jumeaux = svg.querySelectorAll('.dept[data-code="' + code + '"]');
+  for (var i = 0; i < jumeaux.length; i++){
+    jumeaux[i].classList.toggle("survol", actif);
+  }
+}
+
+function epingler(svg, d){
+  var actifs = svg.querySelectorAll(".dept.actif");
+  for (var i=0;i<actifs.length;i++) actifs[i].classList.remove("actif");
+  var jumeaux = svg.querySelectorAll('.dept[data-code="' + d.code + '"]');
+  for (var j=0;j<jumeaux.length;j++) jumeaux[j].classList.add("actif");
+  afficher(d.code, d.nom);
+}
+
+function centroide(geom, proj){
+  var polys = geom.type === "Polygon" ? [geom.coordinates] : geom.coordinates;
+  var meilleur = null, meilleureAire = -1;
+
+  polys.forEach(function(poly){
+    var anneau = poly[0];
+    if (!anneau || anneau.length < 4) return;
+    var pts = anneau.map(proj);
+    var aire = 0, cx = 0, cy = 0;
+    for (var i = 0; i < pts.length - 1; i++){
+      var x0 = pts[i][0], y0 = pts[i][1], x1 = pts[i+1][0], y1 = pts[i+1][1];
+      var croix = x0 * y1 - x1 * y0;
+      aire += croix;
+      cx += (x0 + x1) * croix;
+      cy += (y0 + y1) * croix;
+    }
+    aire *= 0.5;
+    if (Math.abs(aire) < 1e-6) return;
+    cx /= (6 * aire); cy /= (6 * aire);
+    if (Math.abs(aire) > meilleureAire){
+      meilleureAire = Math.abs(aire);
+      meilleur = [cx, cy];
+    }
+  });
+
+  return meilleur;
+}
+
+function centreBoite(geom, proj){
+  var xMin=Infinity, xMax=-Infinity, yMin=Infinity, yMax=-Infinity;
+  parcourir(geom, function(c){
+    var p = proj(c);
+    if (p[0] < xMin) xMin = p[0]; if (p[0] > xMax) xMax = p[0];
+    if (p[1] < yMin) yMin = p[1]; if (p[1] > yMax) yMax = p[1];
+  });
+  return [(xMin + xMax) / 2, (yMin + yMax) / 2];
+}
+
+function parcourir(geom, fn){
+  if (!geom) return;
+  function rec(c){ if (Array.isArray(c[0])) c.forEach(rec); else fn(c); }
+  rec(geom.coordinates);
+}
+
+function versPath(geom, proj){
+  var polys = geom.type === "Polygon" ? [geom.coordinates] : geom.coordinates;
+  var d = "";
+  polys.forEach(function(poly){ poly.forEach(function(anneau){
+    anneau.forEach(function(c, i){
+      var p = proj(c);
+      d += (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1);
+    });
+    d += "Z";
+  }); });
+  return d;
+}
+
+function afficher(code, nom){
+  var indices = MATRICE[code] || [];
+  var titre = (code === DROM.code) ? DROM.titre : nom;
+
+  var html = '<span class="code">' + esc(code) + '</span>'
+           + '<h2>' + esc(titre) + '</h2>'
+           + '<div class="filet"></div>';
+
+  if (!indices.length){
+    html += '<p>Aucune banque referencee pour ce departement.</p>';
+  } else {
+    html += '<p class="decompte">' + indices.length + ' banque'
+          + (indices.length > 1 ? 's' : '') + ' competente'
+          + (indices.length > 1 ? 's' : '') + '</p>'
+          + '<ul class="liens">' + indices.map(function(i){
+              var b = BANQUES[i];
+              if (!b) return '';
+              return '<li><a href="' + esc(b.lien) + '" target="_blank" rel="noopener">'
+                   + '<span class="banque">'
+                   + '<span class="banque-nom">' + esc(b.nom) + '</span>'
+                   + '<span class="banque-complet">' + esc(b.complet) + '</span>'
+                   + '</span></a></li>';
+            }).join("") + '</ul>';
+  }
+  document.getElementById("panneau").innerHTML = html;
+}
+
+function inviter(){
+  document.getElementById("panneau").innerHTML =
+    '<div class="invite"><strong>Survolez un departement</strong>' +
+    'Les informations correspondantes s\'affichent ici.</div>';
+}
+
+function echec(msg){
+  document.getElementById("carte").innerHTML =
+    '<div class="erreur"><strong>Contours introuvables.</strong><br>' + esc(msg) + '</div>';
+}
+
+function esc(s){
+  return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
+    return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c];
+  });
+}
+</script>
+</body>
+</html>
